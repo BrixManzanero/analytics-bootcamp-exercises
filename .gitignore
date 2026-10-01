@@ -4,3 +4,6 @@ env_lab*/
 
 # DuckDB files
 *.duckdb
+
+# Airflow logs
+airflow/logs/

@@ -301,8 +301,8 @@ services:
           echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
           echo
         fi
-        mkdir -p /sources/logs /sources/dags /sources/plugins
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        mkdir -p /sources/airflow/logs /sources/airflow/dags /sources/airflow/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/airflow/{logs,dags,plugins}
         exec /entrypoint airflow version
     # yamllint enable rule:line-length
     environment:
@@ -316,6 +316,9 @@ services:
     volumes:
       - .:/sources
 
+  # ============================================================
+  # 6.4 - Airflow workaround entrypoint issue fix 
+  # ============================================================
   airflow-cli:
     <<: *airflow-common
     profiles:
@@ -348,9 +351,70 @@ services:
     depends_on:
       - asb-postgres-db
 
+  # ============================================================
+  # 8.0 - Cloudbeaver / DBeaver web-based database management tool
+  # ============================================================
+  asb-cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
+    ports:
+      - "8978:8978"
+    volumes:
+      - asb_cloudbeaver_workspace:/var/cloudbeaver/workspace
+      # DuckDB databases saved on your computer
+      - ./setup/03_duckdb_databases:/opt/duckdb:ro
+    restart: unless-stopped
+
+  # ============================================================
+  # 9.0 - Python script to load AdventureWorks data to PostgreSQL and DuckDB
+  # ============================================================
+  asb-setup-aw-olap:
+    image: python:3.11-slim
+    container_name: asb-setup-aw-olap
+    working_dir: /app
+
+    environment:
+      # DuckDB file created inside the mounted project directory
+      DUCKDB_OLTP_CONNECTION: /app/03_duckdb_databases/asb_oltp.duckdb
+      DUCKDB_OLAP_CONNECTION: /app/03_duckdb_databases/asb_olap.duckdb
+
+      # Use the Compose service name—not localhost
+      POSTGRES_HOST: asb-postgres-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB_OLTP: asb_oltp
+      POSTGRES_DB_OLAP: asb_olap
+      POSTGRES_USER: db_user
+      POSTGRES_PASSWORD: db_password
+
+    volumes:
+      # Requirements.txt file for Python packages 
+      - ./requirements.txt:/app/requirements.txt:ro
+
+      # Map setup_db.py and setup folder to the container
+      - ./setup_db.py:/app/setup_db.py
+      - ./setup/01_data_files:/app/00_setup/01_data_files
+      - ./setup/02_sql_duckdb:/app/00_setup/02_sql_duckdb
+
+      # DuckDB databases saved on your computer
+      - ./setup/03_duckdb_databases:/app/03_duckdb_databases:ro
+
+    command:
+      - sh
+      - -c
+      - |
+        pip install -r /app/requirements.txt &&
+        python setup_db.py
+
+    depends_on:
+      asb-postgres-db:
+        condition: service_healthy
+
+    restart: "no"
+
 volumes:
   asb_seaweedfs_data:
   asb_postgres_data:
+  asb_cloudbeaver_workspace:
 
 networks:
   analytics_solutions_bootcamp:
