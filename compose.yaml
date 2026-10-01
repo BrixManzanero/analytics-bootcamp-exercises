@@ -1,4 +1,8 @@
 services:
+
+  # ============================================================
+  # PostgreSQL database for Data Warehouse
+  # ============================================================
   postgres:
     image: postgres:16-alpine
     container_name: postgres_db
@@ -25,7 +29,9 @@ services:
       retries: 10
       start_period: 10s
 
-
+  # ============================================================
+  # Python script to load data sample datasets to DuckDB and data warehouse
+  # ============================================================
   setup-db:
     image: python:3.11-slim
     container_name: setup_db
@@ -68,6 +74,9 @@ services:
 
     restart: "no"
 
+  # ============================================================
+  # Metabase open source dashboarding platform
+  # ============================================================
   metabase-db:
     image: postgres:16-alpine
     container_name: metabase_db
@@ -96,6 +105,235 @@ services:
       - metabase-db
       - postgres
 
+  # ============================================================
+  # S3-Compatible Object Storage
+  # ============================================================
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: lakehouse-seaweedfs
+    command: "mini -dir=/data"
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      S3_BUCKET: warehouse
+    ports:
+      - "8333:8333"   # S3 API
+      - "9333:9333"   # Master UI
+      - "8889:8888"   # Filer UI
+      - "23646:23646"  # Admin UI
+    volumes:
+      - seaweedfs_data:/data
+    networks:
+      - lakehouse
+
+  # ============================================================
+  # Apache Iceberg REST Catalog
+  # ============================================================
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:latest
+    container_name: lakehouse-iceberg-rest
+    depends_on:
+      - seaweedfs
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://seaweedfs:8333
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    ports:
+      - "8181:8181"
+    networks:
+      - lakehouse
+
+  # ============================================================
+  # Apache Spark
+  # ============================================================
+  spark-iceberg:
+    build:
+      context: ./00_setup/04_spark
+      dockerfile: Dockerfile
+    image: lakehouse-spark-iceberg:latest
+    container_name: lakehouse-spark
+    depends_on:
+      - iceberg-rest
+      - seaweedfs
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+    ports:
+      - "8888:8888"     # Spark Master UI
+      - "8080:8080"     # Spark Master UI
+      - "10000:10000"
+      - "10001:10001"
+    volumes:
+      - ./00_setup/04_spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      # ETL scripts
+      - ./02_lab/03_data_engineering/03_orchestration:/home/iceberg/orchestration
+      # # NYC Taxi source downloads
+      # - ./data:/tmp/nyc_taxi
+    networks:
+      - lakehouse
+
+  # ============================================================
+  # Trino
+  # ============================================================
+  trino:
+    image: trinodb/trino:latest
+    container_name: lakehouse-trino
+    depends_on:
+      - iceberg-rest
+      - seaweedfs
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./00_setup/05_trino:/etc/trino/catalog:ro
+    networks:
+      - lakehouse
+
+  # ============================================================
+  # Airflow Metadata Database
+  # ============================================================
+  airflow-db:
+    image: postgres:16-alpine
+    container_name: lakehouse-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lakehouse
+
+  # ============================================================
+  # Airflow Initialization
+  # ============================================================
+  airflow-init:
+    build:
+      context: ./00_setup/06_airflow
+      dockerfile: Dockerfile
+    image: lakehouse-airflow:latest
+    container_name: lakehouse-airflow-init
+
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+      # Credentials used by 01_ingest_bronze.py
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+
+    volumes:
+      - ./02_lab/03_data_engineering/03_orchestration/dags:/opt/airflow/dags
+      - ./02_lab/03_data_engineering/03_orchestration/scripts:/opt/airflow/scripts
+      - airflow_logs:/opt/airflow/logs
+
+    command: >
+      bash -c "
+      airflow db migrate &&
+      airflow users create
+      --username admin
+      --password admin
+      --firstname Lakehouse
+      --lastname Admin
+      --role Admin
+      --email admin@example.com
+      || true
+      "
+
+    networks:
+      - lakehouse
+
+
+  # ============================================================
+  # Airflow API / Web UI
+  # ============================================================
+  airflow-webserver:
+    image: lakehouse-airflow:latest
+    container_name: lakehouse-airflow-webserver
+
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+
+    ports:
+      - "8082:8080"
+
+    volumes:
+      - ./02_lab/03_data_engineering/03_orchestration/dags:/opt/airflow/dags
+      - ./02_lab/03_data_engineering/03_orchestration/scripts:/opt/airflow/scripts
+      - airflow_logs:/opt/airflow/logs
+
+    command: api-server
+
+    networks:
+      - lakehouse
+
+
+  # ============================================================
+  # Airflow Scheduler
+  # ============================================================
+  airflow-scheduler:
+    image: lakehouse-airflow:latest
+    container_name: lakehouse-airflow-scheduler
+
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+
+    volumes:
+      - ./02_lab/03_data_engineering/03_orchestration/dags:/opt/airflow/dags
+      - ./02_lab/03_data_engineering/03_orchestration/scripts:/opt/airflow/scripts
+      - airflow_logs:/opt/airflow/logs
+
+    command: scheduler
+
+    networks:
+      - lakehouse
+
 volumes:
   postgres_data:
   metabase_data:
+  seaweedfs_data:
+  airflow_db_data:
+  airflow_logs:
+
+networks:
+  lakehouse:
+    driver: bridge
