@@ -16,7 +16,9 @@ def ingest_iceberg(month):
         if container.status != "running":
             raise AirflowException("asb-spark-iceberg must be running")
         command = [
-            "spark-submit", "--master", "local[*]",
+            "spark-submit", 
+            "--master", "local[*]",
+            "--packages", "org.apache.hadoop:hadoop-aws:3.3.4",
             "/opt/spark/scripts/02_ingest_bronze.py",
             "--month", month,
         ]
@@ -34,7 +36,7 @@ with DAG(
     dag_id="nyc_yellow_taxi_pipeline",
     description="Monthly Yellow Taxi ingestion: SeaweedFS raw to Iceberg bronze",
     start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
-    # schedule="@monthly",
+    schedule='@monthly',
     catchup=True,
     max_active_runs=1,
     default_args={
