@@ -15,7 +15,7 @@ SOURCE_URL = (
     "trip-data/yellow_tripdata_{year}-{month:02d}.parquet"
 )
 
-S3_ENDPOINT = "http://seaweedfs:8333"
+S3_ENDPOINT = "http://asb-seaweedfs:8333"
 
 AWS_ACCESS_KEY_ID = "admin"
 AWS_SECRET_ACCESS_KEY = "password"
@@ -39,18 +39,6 @@ def get_s3_client():
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
         region_name=AWS_REGION,
     )
-
-# ============================================================
-# Create bucket if needed
-# ============================================================
-def ensure_bucket(s3):
-    try:
-        s3.head_bucket(Bucket=BUCKET)
-        print(f"[BUCKET] {BUCKET} already exists.")
-
-    except ClientError:
-        print(f"[BUCKET] Creating {BUCKET}")
-        s3.create_bucket(Bucket=BUCKET)
 
 # ============================================================
 # Check whether object already exists
@@ -105,8 +93,6 @@ def ingest_file(year, month):
     source_url = SOURCE_URL.format(year=year, month=month)
 
     s3 = get_s3_client()
-
-    ensure_bucket(s3)
 
     # --------------------------------------------------------
     # Skip if object already exists

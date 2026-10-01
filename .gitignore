@@ -5,5 +5,8 @@ env_lab*/
 # DuckDB files
 *.duckdb
 
+# Python cache
+__pycache__/
+
 # Airflow logs
 airflow/logs/

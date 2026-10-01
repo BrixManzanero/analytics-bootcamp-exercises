@@ -24,6 +24,8 @@ x-airflow-common:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/scripts:/opt/airflow/scripts
+    - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -52,10 +54,6 @@ services:
     volumes:
       - asb_seaweedfs_data:/data
 
-    # External network needs to be created separately.
-    networks:
-      - analytics_solutions_bootcamp
-
   # ============================================================
   # 1.1 - SeaweedFS initialization script to create data-lake bucket
   # ============================================================
@@ -75,9 +73,6 @@ services:
           weed shell \
             -master=asb-seaweedfs:9333 \
             -filer=asb-seaweedfs:8888
-
-    networks:
-      - analytics_solutions_bootcamp
 
   # ============================================================
   # 2.0 - PostgreSQL database for OLTP, OLAP, and metadata databases  
@@ -131,9 +126,6 @@ services:
     ports:
       - "8181:8181"
 
-    networks:
-      - analytics_solutions_bootcamp
-
   # ============================================================
   # 4.0 - Spark for distributed processing
   # ============================================================
@@ -158,9 +150,7 @@ services:
 
     volumes:
       - ./setup/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-
-    networks:
-      - analytics_solutions_bootcamp
+      - ./airflow/scripts:/opt/spark/scripts:ro
 
   # ============================================================
   # 5.0 - Trino for distributed SQL query engine for big data analytics
@@ -178,9 +168,6 @@ services:
 
     volumes:
       - ./setup/iceberg.properties:/etc/trino/catalog/iceberg.properties:ro
-
-    networks:
-      - analytics_solutions_bootcamp
 
   # ============================================================
   # 6.0 - Airflow web server UI
@@ -301,8 +288,8 @@ services:
           echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
           echo
         fi
-        mkdir -p /sources/airflow/logs /sources/airflow/dags /sources/airflow/plugins
-        chown -R "${AIRFLOW_UID}:0" /sources/airflow/{logs,dags,plugins}
+        mkdir -p /sources/airflow/logs /sources/airflow/dags /sources/airflow/plugins /sources/airflow/scripts
+        chown -R "${AIRFLOW_UID}:0" /sources/airflow/{logs,dags,plugins,scripts}
         exec /entrypoint airflow version
     # yamllint enable rule:line-length
     environment:
@@ -337,7 +324,7 @@ services:
   # ============================================================
   asb-metabase:
     image: metabase/metabase:v0.63.17.x
-    container_name: metabase
+    container_name: asb-metabase
     restart: always
     ports:
       - "3000:3000"
@@ -356,13 +343,13 @@ services:
   # ============================================================
   asb-cloudbeaver:
     image: dbeaver/cloudbeaver:latest
-    container_name: cloudbeaver
+    container_name: asb-cloudbeaver
     ports:
       - "8978:8978"
     volumes:
-      - asb_cloudbeaver_workspace:/var/cloudbeaver/workspace
+      - asb_cloudbeaver_workspace:/opt/cloudbeaver/workspace
       # DuckDB databases saved on your computer
-      - ./setup/03_duckdb_databases:/opt/duckdb:ro
+      - ./setup/03_duckdb_databases:/opt/duckdb
     restart: unless-stopped
 
   # ============================================================
@@ -396,7 +383,7 @@ services:
       - ./setup/02_sql_duckdb:/app/00_setup/02_sql_duckdb
 
       # DuckDB databases saved on your computer
-      - ./setup/03_duckdb_databases:/app/03_duckdb_databases:ro
+      - ./setup/03_duckdb_databases:/app/03_duckdb_databases
 
     command:
       - sh
@@ -415,6 +402,3 @@ volumes:
   asb_seaweedfs_data:
   asb_postgres_data:
   asb_cloudbeaver_workspace:
-
-networks:
-  analytics_solutions_bootcamp:
