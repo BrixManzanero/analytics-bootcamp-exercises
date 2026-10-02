@@ -136,10 +136,28 @@ def main():
             try:
                 count = df.count()
                 if count == 0:
-                    raise ValueError(f"{path}: empty source; refusing to replace existing data")
-                # A single Iceberg commit replaces only this source month.
-                df.writeTo(table).overwrite(F.col("source_month") == F.lit(month))
-                print(f"[SUCCESS] {month}: {count:,} rows -> {table}", flush=True)
+                    raise ValueError(
+                        f"{path}: empty source; refusing to replace existing data"
+                    )
+
+                filename = path.rsplit("/", 1)[-1]
+
+                print(f"[DELETE] Existing rows for {filename}", flush=True)
+
+                spark.sql(
+                    f"""
+                    DELETE FROM {table}
+                    WHERE regexp_extract(source_file, '([^/]+)$', 1) = :filename
+                    """,
+                    args={"filename": filename},
+                )
+
+                df.writeTo(table).append()
+
+                print(
+                    f"[SUCCESS] {filename}: {count:,} rows -> {table}",
+                    flush=True,
+                )
             finally:
                 df.unpersist()
         print("[DONE] All selected files loaded", flush=True)

@@ -35,7 +35,7 @@ def ingest_iceberg(month):
 with DAG(
     dag_id="nyc_yellow_taxi_pipeline",
     description="Monthly Yellow Taxi ingestion: SeaweedFS raw to Iceberg bronze",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     schedule='@monthly',
     catchup=True,
     max_active_runs=1,
@@ -47,10 +47,18 @@ with DAG(
     },
     tags=["nyc-tlc", "yellow-taxi", "lakehouse"],
 ) as dag:
-    ingest_raw = BashOperator(
-        task_id="ingest_raw",
+
+    ingest_raw_taxi_zone = BashOperator(
+        task_id="ingest_raw_taxi_zone",
         bash_command="""
-        python -u /opt/airflow/scripts/01_ingest_raw.py \
+        python -u /opt/airflow/scripts/01_ingest_raw_taxi_zone.py
+        """,
+    )
+
+    ingest_raw_yellow_trips = BashOperator(
+        task_id="ingest_raw_yellow_trips",
+        bash_command="""
+        python -u /opt/airflow/scripts/01_ingest_raw_yellow_trips.py \
             --year {{ data_interval_start.year }} \
             --month {{ data_interval_start.month }}
         """,
@@ -62,4 +70,4 @@ with DAG(
         op_kwargs={"month": "{{ data_interval_start.strftime('%Y-%m') }}"},
     )
 
-    ingest_raw >> ingest_bronze
+    ingest_raw_taxi_zone >> ingest_raw_yellow_trips >> ingest_bronze
