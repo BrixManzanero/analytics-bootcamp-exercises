@@ -42,7 +42,7 @@ def build_spark():
         "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
         "spark.sql.catalog.lakehouse": "org.apache.iceberg.spark.SparkCatalog",
         "spark.sql.catalog.lakehouse.type": "rest",
-        "spark.sql.catalog.lakehouse.uri": os.getenv("ICEBERG_REST_URI", "http://asb-iceberg-rest:8080"),
+        "spark.sql.catalog.lakehouse.uri": os.getenv("ICEBERG_REST_URI", "http://asb-iceberg-rest:8181"),
         "spark.sql.catalog.lakehouse.warehouse": "s3://warehouse/",
         "spark.sql.catalog.lakehouse.io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
         "spark.sql.catalog.lakehouse.s3.endpoint": endpoint,
