@@ -355,9 +355,9 @@ services:
   # ============================================================
   # 9.0 - Python script to load AdventureWorks data to PostgreSQL and DuckDB
   # ============================================================
-  asb-setup-aw-olap:
+  asb-setup-aw-oltp:
     image: python:3.11-slim
-    container_name: asb-setup-aw-olap
+    container_name: asb-setup-aw-oltp
     working_dir: /app
 
     environment:
