@@ -355,15 +355,15 @@ services:
   # ============================================================
   # 9.0 - Python script to load AdventureWorks data to PostgreSQL and DuckDB
   # ============================================================
-  asb-setup-aw-oltp:
+  asb-setup:
     image: python:3.11-slim
-    container_name: asb-setup-aw-oltp
+    container_name: asb-setup
     working_dir: /app
 
     environment:
       # DuckDB file created inside the mounted project directory
-      DUCKDB_OLTP_CONNECTION: /app/03_duckdb_databases/asb_oltp.duckdb
-      DUCKDB_OLAP_CONNECTION: /app/03_duckdb_databases/asb_olap.duckdb
+      DUCKDB_OLTP_CONNECTION: /app/setup/03_duckdb_databases/asb_oltp.duckdb
+      DUCKDB_OLAP_CONNECTION: /app/setup/03_duckdb_databases/asb_olap.duckdb
 
       # Use the Compose service name—not localhost
       POSTGRES_HOST: asb-postgres-db
@@ -379,18 +379,16 @@ services:
 
       # Map setup_db.py and setup folder to the container
       - ./setup_db.py:/app/setup_db.py
-      - ./setup/01_data_files:/app/00_setup/01_data_files
-      - ./setup/02_sql_duckdb:/app/00_setup/02_sql_duckdb
-
-      # DuckDB databases saved on your computer
-      - ./setup/03_duckdb_databases:/app/03_duckdb_databases
+      - ./setup/01_data_files:/app/setup/01_data_files
+      - ./setup/02_sql_duckdb:/app/setup/02_sql_duckdb
+      - ./setup/03_duckdb_databases:/app/setup/03_duckdb_databases
 
     command:
       - sh
       - -c
       - |
         pip install -r /app/requirements.txt &&
-        python setup_db.py
+        python -u setup_db.py
 
     depends_on:
       asb-postgres-db:
