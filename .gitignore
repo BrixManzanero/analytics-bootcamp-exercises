@@ -10,3 +10,8 @@ __pycache__/
 
 # Airflow logs
 airflow/logs/
+
+# Some files
+demo.ipynb
+test.py
+yellow_tripdata_2026-01.parquet

@@ -141,6 +141,11 @@ services:
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: password
       AWS_REGION: us-east-1
+      PYSPARK_SUBMIT_ARGS: >-
+        --packages org.apache.hadoop:hadoop-aws:3.3.4
+        --conf spark.jars.ivy=/opt/spark/ivy-cache
+        pyspark-shell
+
 
     ports:
       - "8888:8888"     # Jupyter UI
@@ -151,6 +156,7 @@ services:
     volumes:
       - ./setup/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./airflow/scripts:/opt/spark/scripts:ro
+      - asb_spark_ivy_cache:/opt/spark/ivy-cache
 
   # ============================================================
   # 5.0 - Trino for distributed SQL query engine for big data analytics
@@ -348,9 +354,12 @@ services:
       - "8978:8978"
     volumes:
       - asb_cloudbeaver_workspace:/opt/cloudbeaver/workspace
-      # DuckDB databases saved on your computer
-      - ./setup/03_duckdb_databases:/opt/duckdb
+      # Mount DuckDB files as read-only
+      - ./03_duckdb_databases:/opt/cloudbeaver/duckdb:ro
     restart: unless-stopped
+    depends_on:
+      asb-setup:
+        condition: service_completed_successfully
 
   # ============================================================
   # 9.0 - Python script to load AdventureWorks data to PostgreSQL and DuckDB
@@ -400,3 +409,4 @@ volumes:
   asb_seaweedfs_data:
   asb_postgres_data:
   asb_cloudbeaver_workspace:
+  asb_spark_ivy_cache:
