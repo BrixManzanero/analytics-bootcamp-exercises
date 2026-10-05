@@ -1,4 +1,5 @@
-CREATE OR REPLACE dim_product AS 
+DROP TABLE IF EXISTS dim_product;
+CREATE TABLE dim_product AS
 with product_cost_hist as (
 	select 
 		product_id
@@ -47,10 +48,10 @@ with product_cost_hist as (
 		, pm."name" as model_name
 		, pch.cost_valid_from
 		, pch.cost_valid_to
-		, pch.standard_cost 
+		, pch.standard_cost AS historical_standard_cost
 		, pph.price_valid_from
 		, pph.price_valid_to
-		, pph.list_price 
+		, pph.list_price AS historical_list_price
 		, p.sell_start_date::date as sell_start_date
 		, p.sell_end_date::date as sell_end_date
 		, p.discontinued_date::date as discontinued_date

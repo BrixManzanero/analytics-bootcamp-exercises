@@ -1,4 +1,5 @@
-CREATE OR REPLACE fact_sales_order_header AS 
+DROP TABLE IF EXISTS fact_sales_order_header;
+CREATE TABLE fact_sales_order_header AS 
 SELECT 
 	sales_order_id
 	, revision_number
@@ -26,4 +27,4 @@ SELECT
 	, "comment"
 	, rowguid
 	, modified_date
-FROM sales.sales_order_header
+FROM sales.sales_order_header;
