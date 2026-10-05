@@ -1,7 +1,7 @@
 import re
 import duckdb 
 import kagglehub
-from os import getenv
+from os import getenv, getcwd
 from pathlib import Path
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -89,14 +89,18 @@ def attach_postgres(
     """
     try:
         # Install and load postgres library
+        print("Installing and loading postgres library...", flush=True)
         run_sql(conn, "INSTALL postgres;")
+        print("Done installing and loading postgres library.", flush=True)
         run_sql(conn, "LOAD postgres;")
 
         # Construct SQL ATTACH statement 
         attach_stmt = f"ATTACH 'host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_password}' AS {pg_alias} (TYPE POSTGRES)"
 
         # Attach postgres
+        print(attach_stmt)
         run_sql(conn, attach_stmt)
+        print("Done attaching PostgreSQL database.", flush=True)
 
         # Handling nulls
         run_sql(conn, "SET pg_null_byte_replacement = '?';")
@@ -106,7 +110,7 @@ def attach_postgres(
     except Exception as e:
         print(f"Attaching Postgre connection to database is not successful. {e}")
         print("Skipping Postgre table creation.")
-        return (0, )
+        return (0, None)
 
 def get_kaggle_data_path(kaggle_dataset: str, file_type: str = "csv"):
     # Returns a list of paths containing the download Kaggle datasets 
@@ -122,11 +126,13 @@ def get_kaggle_data_path(kaggle_dataset: str, file_type: str = "csv"):
 if __name__=="__main__":
     # Get generic DuckDB connection to be used for all databases processes
     duckdb_conn = get_duckdb_conn(DUCKDB_OLTP_CONNECTION)
+    print(f"Connected to DuckDB database: {DUCKDB_OLTP_CONNECTION}")
 
     # Create all schema required for AdventureWorks OLTP
     print("Creating schemas for AdventureWorks dataset...")
     for schema_name in tqdm(AW_SCHEMA_NAMES):
         create_schema(duckdb_conn, schema_name)
+    print("Done creating schemas for AdventureWorks dataset...")
 
     # Attach PostgreSQL database to DuckDB
     pg_alias_attach_success, pg_alias = attach_postgres(
@@ -141,10 +147,10 @@ if __name__=="__main__":
 
     # Read all SQL files for AdventureWorks ingestion
     print("Creating tables for AdventureWorks dataset...")
-    sql_files = get_all_files("00_setup/02_sql_duckdb", "*.sql")
+    sql_files = get_all_files("setup/02_sql_duckdb", "*.sql")
     for sql_file in tqdm(sql_files):
         with open(sql_file) as f:
-            sql = f.read().format(folder_path="00_setup/01_data_files")
+            sql = f.read().format(folder_path="setup/01_data_files")
 
         # Create tables on DuckDB generic connection; Run the same script on Postgre if attachment is successful
         run_sql(duckdb_conn, sql, pg_alias_attach_success, 
@@ -165,3 +171,5 @@ if __name__=="__main__":
             # Create tables on DuckDB generic connection
             run_sql(duckdb_conn, sql, pg_alias_attach_success, 
                     "CREATE OR REPLACE TABLE ", f"CREATE OR REPLACE TABLE {pg_alias}.")
+
+    print("Done creating tables for AdventureWorks and Kaggle datasets.")
